@@ -2,12 +2,7 @@ from fastapi import FastAPI, HTTPException
 import aiosqlite
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
-import threading
-import asyncio
 import os
-
-# Импортируем главную функцию бота из bot.py
-from bot import main as bot_main
 
 app = FastAPI()
 
@@ -26,16 +21,27 @@ class Place(BaseModel):
     lat: float
     lng: float
 
+async def init_db():
+    """Создаём таблицу, если её нет"""
+    async with aiosqlite.connect("data.db") as db:
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS places (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                description TEXT,
+                discount TEXT,
+                category TEXT,
+                lat REAL,
+                lng REAL
+            )
+        """)
+        await db.commit()
+    print("База данных и таблица places готовы")
+
 @app.on_event("startup")
 async def startup_event():
-    """Запускаем бота в отдельном потоке при старте сервера"""
-    def run_bot():
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(bot_main())
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
-    bot_thread.start()
-    print("Бот запущен в фоне")
+    await init_db()
+    print("API запущен (бот временно отключён)")
 
 @app.get("/api/places")
 async def get_places():
