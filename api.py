@@ -2,6 +2,12 @@ from fastapi import FastAPI, HTTPException
 import aiosqlite
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import threading
+import asyncio
+import os
+
+# Импортируем главную функцию бота из bot.py
+from bot import main as bot_main
 
 app = FastAPI()
 
@@ -19,6 +25,17 @@ class Place(BaseModel):
     category: str
     lat: float
     lng: float
+
+@app.on_event("startup")
+async def startup_event():
+    """Запускаем бота в отдельном потоке при старте сервера"""
+    def run_bot():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(bot_main())
+    bot_thread = threading.Thread(target=run_bot, daemon=True)
+    bot_thread.start()
+    print("Бот запущен в фоне")
 
 @app.get("/api/places")
 async def get_places():
