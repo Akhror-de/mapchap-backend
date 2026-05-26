@@ -2,6 +2,8 @@ from fastapi import FastAPI, HTTPException
 import aiosqlite
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import threading
+import asyncio
 import os
 
 app = FastAPI()
@@ -22,7 +24,6 @@ class Place(BaseModel):
     lng: float
 
 async def init_db():
-    """Создаём таблицу, если её нет"""
     async with aiosqlite.connect("data.db") as db:
         await db.execute("""
             CREATE TABLE IF NOT EXISTS places (
@@ -38,10 +39,28 @@ async def init_db():
         await db.commit()
     print("База данных и таблица places готовы")
 
+def start_bot_in_thread():
+    """Запускаем бота в отдельном потоке, с перехватом ошибок"""
+    try:
+        from bot import main as bot_main
+        def run_bot():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(bot_main())
+            except Exception as e:
+                print(f"Ошибка в работе бота: {e}")
+        bot_thread = threading.Thread(target=run_bot, daemon=True)
+        bot_thread.start()
+        print("Бот запущен в фоне")
+    except Exception as e:
+        print(f"Не удалось запустить бота: {e}")
+
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    print("API запущен (бот временно отключён)")
+    start_bot_in_thread()
+    print("API и бот готовы")
 
 @app.get("/api/places")
 async def get_places():
