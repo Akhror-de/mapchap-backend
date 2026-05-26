@@ -18,14 +18,14 @@ class Place(BaseModel):
     name: str
     description: str
     discount: str
-    expiry: str = None   # новое поле: дата и время окончания акции (ISO-формат)
+    contact: str = None   # новое поле: контакт предпринимателя
+    expiry: str = None
     category: str
     lat: float
     lng: float
 
 async def init_db():
     async with aiosqlite.connect("data.db") as db:
-        # Создаём таблицу, если её нет
         await db.execute("""
             CREATE TABLE IF NOT EXISTS places (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,17 +37,20 @@ async def init_db():
                 lng REAL
             )
         """)
-        # Добавляем столбец expiry, если его ещё нет
+        # Добавляем contact и expiry, если их ещё нет
         try:
             await db.execute("ALTER TABLE places ADD COLUMN expiry TEXT")
         except:
-            pass  # столбец уже существует
+            pass
+        try:
+            await db.execute("ALTER TABLE places ADD COLUMN contact TEXT")
+        except:
+            pass
         await db.commit()
 
 @app.on_event("startup")
 async def startup_event():
     await init_db()
-    # Запускаем бота в фоне (как asyncio задачу)
     try:
         from bot import start_bot
         asyncio.create_task(start_bot())
@@ -58,7 +61,10 @@ async def startup_event():
 @app.get("/api/places")
 async def get_places():
     async with aiosqlite.connect("data.db") as db:
-        cursor = await db.execute("SELECT name, description, discount, expiry, category, lat, lng FROM places")
+        cursor = await db.execute(
+            "SELECT name, description, discount, contact, expiry, category, lat, lng FROM places "
+            "WHERE expiry IS NULL OR datetime(expiry) > datetime('now')"
+        )
         rows = await cursor.fetchall()
         places = []
         for row in rows:
@@ -66,10 +72,11 @@ async def get_places():
                 "name": row[0],
                 "description": row[1],
                 "discount": row[2],
-                "expiry": row[3],
-                "category": row[4],
-                "lat": row[5],
-                "lng": row[6]
+                "contact": row[3],
+                "expiry": row[4],
+                "category": row[5],
+                "lat": row[6],
+                "lng": row[7]
             })
         return places
 
@@ -77,8 +84,8 @@ async def get_places():
 async def add_place(place: Place):
     async with aiosqlite.connect("data.db") as db:
         await db.execute(
-            "INSERT INTO places (name, description, discount, expiry, category, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (place.name, place.description, place.discount, place.expiry, place.category, place.lat, place.lng)
+            "INSERT INTO places (name, description, discount, contact, expiry, category, lat, lng) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (place.name, place.description, place.discount, place.contact, place.expiry, place.category, place.lat, place.lng)
         )
         await db.commit()
     return {"status": "ok"}
