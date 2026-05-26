@@ -24,7 +24,7 @@ LANGUAGES = {
     "🇹🇯 Тоҷикӣ": "tg"
 }
 
-# ---------- Многоязычные стоп-слова (по тематикам) ----------
+# ---------- Многоязычные стоп-слова ----------
 MULTI_LANG_STOP_WORDS = {
     "drugs": {
         "ru": ["наркотик", "спайс", "соль", "мефедрон", "гашиш", "марихуана", "кокаин", "героин", "амфетамин", "лирика", "снотворное", "закладка", "кладмен", "трава", "шишки", "фен", "экстази", "метадон", "опий"],
@@ -76,7 +76,6 @@ MULTI_LANG_STOP_WORDS = {
     }
 }
 
-# Объединяем все стоп-слова в один плоский словарь {lang: [word1, word2, ...]}
 def build_stop_words_dict():
     stop_words_dict = {}
     for category, translations in MULTI_LANG_STOP_WORDS.items():
@@ -88,7 +87,7 @@ def build_stop_words_dict():
 
 STOP_WORDS_BY_LANG = build_stop_words_dict()
 
-# ---------- Тексты для всех языков ----------
+# ---------- Тексты ----------
 TEXTS = {
     "choose_language": {
         "ru": "Выберите язык / Choose language:",
@@ -137,6 +136,22 @@ TEXTS = {
         "kk": "Жеңілдік мөлшері немесе шарты:",
         "ky": "Арзандатуу өлчөмү же шарты:",
         "tg": "Миқдори тахфиф ё шарт:"
+    },
+    "enter_contact": {
+        "ru": "Введите контакт для связи (телефон, @username, ссылка) или нажмите «⏭ Пропустить»:",
+        "en": "Enter contact (phone, @username, link) or press '⏭ Skip':",
+        "uz": "Aloqa uchun ma'lumot kiriting (telefon, @username, havola) yoki '⏭ O‘tkazib yuborish' tugmasini bosing:",
+        "kk": "Байланыс үшін деректер енгізіңіз (телефон, @username, сілтеме) немесе '⏭ Өткізіп жіберу' түймесін басыңыз:",
+        "ky": "Байланыш үчүн маалымат жазыңыз (телефон, @username, шилтеме) же '⏭ Өткөрүп жиберүү' баскычын басыңыз:",
+        "tg": "Маълумоти тамосро ворид кунед (телефон, @username, истинод) ё тугмаи '⏭ Гузаштан' -ро пахш кунед:"
+    },
+    "contact_skip_button": {
+        "ru": "⏭ Пропустить",
+        "en": "⏭ Skip",
+        "uz": "⏭ O‘tkazib yuborish",
+        "kk": "⏭ Өткізіп жіберу",
+        "ky": "⏭ Өткөрүп жиберүү",
+        "tg": "⏭ Гузаштан"
     },
     "enter_expiry": {
         "ru": "До какой даты действует предложение? Введи ДД.ММ.ГГГГ ЧЧ:ММ (например, 31.12.2025 23:59)",
@@ -227,22 +242,20 @@ CATEGORY_TRANSLATIONS = {
     "cafe": {"ru": "Кафе", "en": "Cafe", "uz": "Kafe", "kk": "Кафе", "ky": "Кафе", "tg": "Қаҳвахона"}
 }
 
-# Сопоставление кодов категорий
 CATEGORY_CODES = {code for code in CATEGORY_TRANSLATIONS}
 
 # ---------- Бот и диспетчер ----------
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Хранилище языков пользователей
 user_language = {}
 
-# FSM состояния
 class AddPlace(StatesGroup):
     waiting_for_name = State()
     waiting_for_description = State()
     waiting_for_address = State()
     waiting_for_discount = State()
+    waiting_for_contact = State()   # новое состояние
     waiting_for_expiry = State()
     waiting_for_category = State()
 
@@ -254,7 +267,6 @@ def t(lang, key):
 
 def has_stop_words(text: str, lang: str = "ru") -> bool:
     text_lower = text.lower()
-    # Проверяем стоп-слова для конкретного языка пользователя, а также для русского и английского
     langs_to_check = {lang, "ru", "en"}
     for lng in langs_to_check:
         if lng in STOP_WORDS_BY_LANG:
@@ -274,6 +286,14 @@ def category_keyboard(lang):
         label = CATEGORY_TRANSLATIONS[code].get(lang, CATEGORY_TRANSLATIONS[code]["ru"])
         buttons.append([KeyboardButton(text=label)])
     return ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+
+def contact_skip_keyboard(lang):
+    skip_text = TEXTS["contact_skip_button"][lang]
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text=skip_text)]],
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
 
 # ---------- Геокодинг ----------
 async def geocode_address(address: str) -> tuple[float, float] | None:
@@ -303,20 +323,13 @@ async def send_place_to_api(data: dict) -> bool:
 # ---------- Хендлеры ----------
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
-    await message.answer(
-        TEXTS["choose_language"]["ru"],
-        reply_markup=language_keyboard()
-    )
+    await message.answer(TEXTS["choose_language"]["ru"], reply_markup=language_keyboard())
 
 @dp.message(lambda msg: msg.text in LANGUAGES)
 async def language_chosen(message: types.Message, state: FSMContext):
     lang = LANGUAGES[message.text]
     user_language[message.from_user.id] = lang
-    await message.answer(
-        t(lang, "start_after_lang"),
-        reply_markup=types.ReplyKeyboardRemove()
-    )
-    # Показываем команду /add (можно текстом)
+    await message.answer(t(lang, "start_after_lang"), reply_markup=types.ReplyKeyboardRemove())
     await message.answer("Используйте /add")
 
 @dp.message(Command("add"))
@@ -356,8 +369,20 @@ async def address_entered(message: types.Message, state: FSMContext):
 async def discount_entered(message: types.Message, state: FSMContext):
     lang = get_lang(message)
     await state.update_data(discount=message.text)
+    await state.set_state(AddPlace.waiting_for_contact)
+    await message.answer(t(lang, "enter_contact"), reply_markup=contact_skip_keyboard(lang))
+
+@dp.message(AddPlace.waiting_for_contact)
+async def contact_entered(message: types.Message, state: FSMContext):
+    lang = get_lang(message)
+    skip_text = TEXTS["contact_skip_button"][lang]
+    if message.text == skip_text:
+        contact = None
+    else:
+        contact = message.text.strip()
+    await state.update_data(contact=contact)
     await state.set_state(AddPlace.waiting_for_expiry)
-    await message.answer(t(lang, "enter_expiry"))
+    await message.answer(t(lang, "enter_expiry"), reply_markup=types.ReplyKeyboardRemove())
 
 @dp.message(AddPlace.waiting_for_expiry)
 async def expiry_entered(message: types.Message, state: FSMContext):
@@ -368,7 +393,6 @@ async def expiry_entered(message: types.Message, state: FSMContext):
     except ValueError:
         await message.answer(t(lang, "wrong_date_format"))
         return
-
     await state.update_data(expiry=expiry_iso)
     await state.set_state(AddPlace.waiting_for_category)
     await message.answer(t(lang, "choose_category"), reply_markup=category_keyboard(lang))
@@ -376,7 +400,6 @@ async def expiry_entered(message: types.Message, state: FSMContext):
 @dp.message(AddPlace.waiting_for_category)
 async def category_entered(message: types.Message, state: FSMContext):
     lang = get_lang(message)
-    # Определяем код категории по локализованному названию
     cat_code = None
     for code in CATEGORY_CODES:
         if CATEGORY_TRANSLATIONS[code].get(lang) == message.text:
@@ -397,6 +420,7 @@ async def category_entered(message: types.Message, state: FSMContext):
         "name": data['name'],
         "description": data['description'],
         "discount": data['discount'],
+        "contact": data.get('contact'),  # может быть None
         "expiry": data['expiry'],
         "category": cat_code,
         "lat": lat,
@@ -410,7 +434,6 @@ async def category_entered(message: types.Message, state: FSMContext):
         await message.answer(t(lang, "offer_save_error"), reply_markup=types.ReplyKeyboardRemove())
     await state.clear()
 
-# ---------- Запуск ----------
 async def start_bot():
     print("Бот запущен")
     await dp.start_polling(bot)
