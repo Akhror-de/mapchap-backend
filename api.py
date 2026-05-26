@@ -1,5 +1,6 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import aiosqlite
+from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -10,6 +11,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class Place(BaseModel):
+    name: str
+    description: str
+    discount: str
+    category: str
+    lat: float
+    lng: float
 
 @app.get("/api/places")
 async def get_places():
@@ -27,3 +36,13 @@ async def get_places():
                 "lng": row[5]
             })
         return places
+
+@app.post("/api/add_place")
+async def add_place(place: Place):
+    async with aiosqlite.connect("data.db") as db:
+        await db.execute(
+            "INSERT INTO places (name, description, discount, category, lat, lng) VALUES (?, ?, ?, ?, ?, ?)",
+            (place.name, place.description, place.discount, place.category, place.lat, place.lng)
+        )
+        await db.commit()
+    return {"status": "ok"}
