@@ -12,7 +12,7 @@ from aiogram.types import ReplyKeyboardMarkup, KeyboardButton
 
 # ---------- Ключи ----------
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8829448048:AAGcsoUwczgffKwZrsoRmq8uZ4v0n72vPHc")
-YANDEX_SECRET_KEY = os.getenv("YANDEX_SECRET_KEY", "07b74146-5f5a-46bf-a2b1-cf6d052a41bb")  # уже не используется, но пусть будет
+YANDEX_SECRET_KEY = os.getenv("YANDEX_SECRET_KEY", "07b74146-5f5a-46bf-a2b1-cf6d052a41bb")  # уже не используется
 API_URL = os.getenv("API_URL", "https://mapchap-backend.onrender.com/api/add_place")
 
 # ---------- Стоп-слова ----------
@@ -132,9 +132,7 @@ async def discount_entered(message: types.Message, state: FSMContext):
 @dp.message(AddPlace.waiting_for_expiry)
 async def expiry_entered(message: types.Message, state: FSMContext):
     try:
-        # Парсим дату и время
         expiry = datetime.strptime(message.text.strip(), "%d.%m.%Y %H:%M")
-        # Приводим к строке ISO для базы данных
         expiry_iso = expiry.strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         await message.answer("❌ Неверный формат. Введи дату и время как в примере: 31.12.2024 23:59")
@@ -161,7 +159,7 @@ async def category_entered(message: types.Message, state: FSMContext):
         "name": data['name'],
         "description": data['description'],
         "discount": data['discount'],
-        "expiry": data['expiry'],           # новое поле
+        "expiry": data['expiry'],
         "category": CATEGORIES[message.text],
         "lat": lat,
         "lng": lng
